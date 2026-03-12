@@ -441,7 +441,24 @@ select:focus { border-color: var(--primary); }
     </div>
     <div style="margin-bottom:12px">
       <label for="q-answer">模範答案</label>
-      <textarea id="q-answer" placeholder="模範答案のテキストを入力..." rows="8"></textarea>
+      <div class="camera-area" id="modal-camera-area" style="margin-bottom:8px">
+        <video id="modal-camera-video" autoplay playsinline style="display:none"></video>
+        <canvas id="modal-camera-canvas"></canvas>
+        <img id="modal-camera-preview" style="display:none" alt="プレビュー">
+      </div>
+      <div class="btn-group" style="margin-top:0;margin-bottom:8px">
+        <button type="button" class="btn btn-outline btn-block" id="modal-btn-start-camera" onclick="modalStartCamera()">カメラで撮影</button>
+        <button type="button" class="btn btn-primary btn-block hidden" id="modal-btn-capture" onclick="modalCapturePhoto()">撮影</button>
+      </div>
+      <div class="btn-group" style="margin-top:0;margin-bottom:8px">
+        <button type="button" class="btn btn-outline btn-block" onclick="document.getElementById('modal-file-input').click()">画像ファイル選択</button>
+        <input type="file" id="modal-file-input" accept="image/*" style="display:none" onchange="modalHandleFile(event)">
+      </div>
+      <div class="btn-group hidden" id="modal-ocr-group" style="margin-top:0;margin-bottom:8px">
+        <button type="button" class="btn btn-success btn-block" onclick="modalRunOcr()">OCRで読み取り</button>
+        <button type="button" class="btn btn-outline" onclick="modalResetImage()">撮り直す</button>
+      </div>
+      <textarea id="q-answer" placeholder="模範答案のテキストを入力（または上のカメラ/画像からOCR）..." rows="8"></textarea>
     </div>
     <input type="hidden" id="q-edit-id">
     <div class="btn-group">
@@ -512,7 +529,19 @@ function showAddQuestion() {
   document.getElementById('q-name').value = '';
   document.getElementById('q-answer').value = '';
   document.getElementById('q-edit-id').value = '';
+  resetModalCameraUI();
   document.getElementById('question-modal').classList.remove('hidden');
+}
+
+function resetModalCameraUI() {
+  modalStopCamera();
+  modalImageBase64 = null;
+  document.getElementById('modal-camera-preview').style.display = 'none';
+  document.getElementById('modal-camera-video').style.display = 'none';
+  document.getElementById('modal-btn-start-camera').classList.remove('hidden');
+  document.getElementById('modal-btn-capture').classList.add('hidden');
+  document.getElementById('modal-ocr-group').classList.add('hidden');
+  document.getElementById('modal-file-input').value = '';
 }
 
 function editQuestion(id) {
@@ -522,6 +551,7 @@ function editQuestion(id) {
   document.getElementById('q-name').value = q.name;
   document.getElementById('q-answer').value = q.answer;
   document.getElementById('q-edit-id').value = id;
+  resetModalCameraUI();
   document.getElementById('question-modal').classList.remove('hidden');
 }
 
@@ -557,6 +587,122 @@ function saveQuestion() {
 
 function closeModal() {
   document.getElementById('question-modal').classList.add('hidden');
+  modalStopCamera();
+  modalImageBase64 = null;
+}
+
+// ===== Modal Camera & OCR =====
+let modalImageBase64 = null;
+let modalCameraStream = null;
+
+async function modalStartCamera() {
+  try {
+    modalCameraStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }
+    });
+    const video = document.getElementById('modal-camera-video');
+    video.srcObject = modalCameraStream;
+    video.style.display = 'block';
+    document.getElementById('modal-camera-preview').style.display = 'none';
+    document.getElementById('modal-btn-start-camera').classList.add('hidden');
+    document.getElementById('modal-btn-capture').classList.remove('hidden');
+    document.getElementById('modal-ocr-group').classList.add('hidden');
+    modalImageBase64 = null;
+  } catch (e) {
+    alert('カメラを起動できませんでした: ' + e.message);
+  }
+}
+
+function modalCapturePhoto() {
+  const video = document.getElementById('modal-camera-video');
+  const canvas = document.getElementById('modal-camera-canvas');
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  canvas.getContext('2d').drawImage(video, 0, 0);
+  modalImageBase64 = canvas.toDataURL('image/jpeg', 0.85).split(',')[1];
+  const preview = document.getElementById('modal-camera-preview');
+  preview.src = 'data:image/jpeg;base64,' + modalImageBase64;
+  preview.style.display = 'block';
+  video.style.display = 'none';
+  modalStopCamera();
+  document.getElementById('modal-btn-capture').classList.add('hidden');
+  document.getElementById('modal-ocr-group').classList.remove('hidden');
+}
+
+function modalHandleFile(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    modalImageBase64 = e.target.result.split(',')[1];
+    const preview = document.getElementById('modal-camera-preview');
+    preview.src = e.target.result;
+    preview.style.display = 'block';
+    document.getElementById('modal-camera-video').style.display = 'none';
+    modalStopCamera();
+    document.getElementById('modal-btn-start-camera').classList.add('hidden');
+    document.getElementById('modal-btn-capture').classList.add('hidden');
+    document.getElementById('modal-ocr-group').classList.remove('hidden');
+  };
+  reader.readAsDataURL(file);
+}
+
+function modalResetImage() {
+  modalImageBase64 = null;
+  document.getElementById('modal-camera-preview').style.display = 'none';
+  document.getElementById('modal-btn-start-camera').classList.remove('hidden');
+  document.getElementById('modal-btn-capture').classList.add('hidden');
+  document.getElementById('modal-ocr-group').classList.add('hidden');
+  document.getElementById('modal-file-input').value = '';
+}
+
+function modalStopCamera() {
+  if (modalCameraStream) {
+    modalCameraStream.getTracks().forEach(t => t.stop());
+    modalCameraStream = null;
+  }
+}
+
+async function modalRunOcr() {
+  const apiKey = localStorage.getItem(STORAGE_KEYS.apiKey);
+  if (!apiKey) { alert('設定画面でClaude APIキーを入力してください。'); return; }
+  if (!modalImageBase64) { alert('画像を撮影・選択してください。'); return; }
+
+  showLoading('模範答案をOCR読み取り中...');
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 4096,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: modalImageBase64 } },
+            { type: 'text', text: '画像に写っているテキスト（手書き・印刷問わず）をそのまま正確に文字起こししてください。テキストのみを出力し、説明や前置きは不要です。' }
+          ]
+        }]
+      })
+    });
+    if (!response.ok) {
+      const err = await response.text();
+      throw new Error(`API Error (${response.status}): ${err}`);
+    }
+    const data = await response.json();
+    const text = data.content[0].text;
+    document.getElementById('q-answer').value = text;
+  } catch (e) {
+    alert('OCRエラー:\n' + e.message);
+    console.error(e);
+  } finally {
+    hideLoading();
+  }
 }
 
 // ===== Camera & Image =====
