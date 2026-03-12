@@ -405,8 +405,8 @@ select:focus { border-color: var(--primary); }
 <!-- ===== 設定 ===== -->
 <div id="page-settings" class="page">
   <div class="card">
-    <label for="api-key-input">Claude API キー</label>
-    <input type="text" id="api-key-input" placeholder="sk-ant-..." autocomplete="off">
+    <label for="api-key-input">Gemini API キー</label>
+    <input type="text" id="api-key-input" placeholder="AIza..." autocomplete="off">
     <div class="btn-group">
       <button class="btn btn-primary" onclick="saveApiKey()">保存</button>
     </div>
@@ -665,27 +665,19 @@ function modalStopCamera() {
 
 async function modalRunOcr() {
   const apiKey = localStorage.getItem(STORAGE_KEYS.apiKey);
-  if (!apiKey) { alert('設定画面でClaude APIキーを入力してください。'); return; }
+  if (!apiKey) { alert('設定画面でGemini APIキーを入力してください。'); return; }
   if (!modalImageBase64) { alert('画像を撮影・選択してください。'); return; }
 
   showLoading('模範答案をOCR読み取り中...');
   try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 4096,
-        messages: [{
-          role: 'user',
-          content: [
-            { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: modalImageBase64 } },
-            { type: 'text', text: '画像に写っているテキスト（手書き・印刷問わず）をそのまま正確に文字起こししてください。テキストのみを出力し、説明や前置きは不要です。' }
+        contents: [{
+          parts: [
+            { inlineData: { mimeType: 'image/jpeg', data: modalImageBase64 } },
+            { text: '画像に写っているテキスト（手書き・印刷問わず）をそのまま正確に文字起こししてください。テキストのみを出力し、説明や前置きは不要です。' }
           ]
         }]
       })
@@ -695,7 +687,7 @@ async function modalRunOcr() {
       throw new Error(`API Error (${response.status}): ${err}`);
     }
     const data = await response.json();
-    const text = data.content[0].text;
+    const text = data.candidates[0].content.parts[0].text;
     document.getElementById('q-answer').value = text;
   } catch (e) {
     alert('OCRエラー:\n' + e.message);
@@ -798,7 +790,7 @@ document.getElementById('select-question').addEventListener('change', updateSubm
 // ===== AI Grading =====
 async function submitAnswer() {
   const apiKey = localStorage.getItem(STORAGE_KEYS.apiKey);
-  if (!apiKey) { alert('設定画面でClaude APIキーを入力してください。'); return; }
+  if (!apiKey) { alert('設定画面でGemini APIキーを入力してください。'); return; }
 
   const questionId = document.getElementById('select-question').value;
   const questions = loadData(STORAGE_KEYS.questions);
@@ -809,27 +801,14 @@ async function submitAnswer() {
   showLoading('OCR認識・AI採点中...');
 
   try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 4096,
-        messages: [{
-          role: 'user',
-          content: [
-            {
-              type: 'image',
-              source: { type: 'base64', media_type: 'image/jpeg', data: capturedImageBase64 }
-            },
-            {
-              type: 'text',
-              text: `あなたは法律の答案採点の専門家です。以下のタスクを行ってください。
+        contents: [{
+          parts: [
+            { inlineData: { mimeType: 'image/jpeg', data: capturedImageBase64 } },
+            { text: `あなたは法律の答案採点の専門家です。以下のタスクを行ってください。
 
 ## タスク
 1. 画像に写っている手書きの答案構成をOCRで読み取ってください。
@@ -845,8 +824,7 @@ ${question.answer}
   "ocr_text": "（読み取ったテキスト）",
   "score": （0〜100の整数）,
   "feedback": "（フィードバック。模範答案と比較して良い点・改善点を具体的に述べてください。）"
-}`
-            }
+}` }
           ]
         }]
       })
@@ -858,7 +836,7 @@ ${question.answer}
     }
 
     const data = await response.json();
-    const text = data.content[0].text;
+    const text = data.candidates[0].content.parts[0].text;
 
     // Extract JSON from response
     let result;
@@ -1052,7 +1030,7 @@ renderQuestions();
 if (!localStorage.getItem(STORAGE_KEYS.apiKey)) {
   const notice = document.createElement('div');
   notice.className = 'api-notice';
-  notice.innerHTML = 'Claude APIキーが未設定です。<strong>設定</strong>タブからAPIキーを入力してください。';
+  notice.innerHTML = 'Gemini APIキーが未設定です。<strong>設定</strong>タブからAPIキーを入力してください。';
   notice.style.cssText = 'position:fixed;bottom:20px;left:20px;right:20px;max-width:600px;margin:0 auto;z-index:150;cursor:pointer;';
   notice.onclick = () => { notice.remove(); document.querySelector('[data-page="settings"]').click(); };
   document.body.appendChild(notice);
