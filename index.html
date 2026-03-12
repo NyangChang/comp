@@ -1,0 +1,917 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>答案練習アプリ</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --primary: #2563eb;
+  --primary-dark: #1d4ed8;
+  --success: #16a34a;
+  --danger: #dc2626;
+  --bg: #f8fafc;
+  --card: #ffffff;
+  --text: #1e293b;
+  --text-light: #64748b;
+  --border: #e2e8f0;
+  --radius: 12px;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Hiragino Sans', 'Noto Sans JP', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100dvh;
+}
+
+/* --- Layout --- */
+.app-header {
+  background: var(--primary);
+  color: #fff;
+  padding: 16px 20px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: 0 2px 8px rgba(0,0,0,.15);
+}
+.app-header h1 { font-size: 1.2rem; font-weight: 700; }
+
+nav {
+  display: flex;
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 52px;
+  z-index: 99;
+}
+nav button {
+  flex: 1;
+  padding: 12px 8px;
+  border: none;
+  background: none;
+  font-size: .85rem;
+  font-weight: 600;
+  color: var(--text-light);
+  cursor: pointer;
+  border-bottom: 3px solid transparent;
+  transition: all .2s;
+}
+nav button.active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+}
+
+.page { display: none; padding: 20px; max-width: 640px; margin: 0 auto; }
+.page.active { display: block; }
+
+/* --- Components --- */
+.card {
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.08);
+}
+
+label {
+  display: block;
+  font-size: .85rem;
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: var(--text-light);
+}
+
+input[type="text"], textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  font-size: .95rem;
+  font-family: inherit;
+  transition: border-color .2s;
+  outline: none;
+}
+input[type="text"]:focus, textarea:focus {
+  border-color: var(--primary);
+}
+textarea { resize: vertical; min-height: 120px; }
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 8px;
+  font-size: .9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .2s, opacity .2s;
+}
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn-primary { background: var(--primary); color: #fff; }
+.btn-primary:hover:not(:disabled) { background: var(--primary-dark); }
+.btn-success { background: var(--success); color: #fff; }
+.btn-danger { background: var(--danger); color: #fff; }
+.btn-outline {
+  background: none;
+  border: 1.5px solid var(--border);
+  color: var(--text);
+}
+.btn-outline:hover { background: var(--bg); }
+.btn-block { width: 100%; justify-content: center; }
+
+.btn-group { display: flex; gap: 8px; margin-top: 12px; }
+
+.question-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 16px;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  transition: border-color .2s, background .2s;
+}
+.question-item:hover { border-color: var(--primary); background: #f0f7ff; }
+.question-item .name { font-weight: 600; }
+.question-item .meta { font-size: .8rem; color: var(--text-light); }
+.question-item .actions { display: flex; gap: 6px; }
+.question-item .actions button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1rem;
+  padding: 4px;
+  border-radius: 4px;
+  transition: background .2s;
+}
+.question-item .actions button:hover { background: var(--border); }
+
+.empty-state {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--text-light);
+}
+.empty-state .icon { font-size: 3rem; margin-bottom: 12px; }
+
+/* Camera */
+.camera-area {
+  position: relative;
+  background: #000;
+  border-radius: var(--radius);
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+.camera-area video, .camera-area img {
+  width: 100%;
+  display: block;
+}
+.camera-area canvas { display: none; }
+
+/* Result */
+.result-box {
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-top: 16px;
+}
+.score-display {
+  text-align: center;
+  margin-bottom: 16px;
+}
+.score-display .score {
+  font-size: 3rem;
+  font-weight: 800;
+  line-height: 1;
+}
+.score-display .unit { font-size: 1.5rem; font-weight: 600; }
+.score-low { color: var(--danger); }
+.score-mid { color: #ea580c; }
+.score-high { color: var(--success); }
+
+.feedback-text {
+  background: var(--bg);
+  border-radius: 8px;
+  padding: 16px;
+  font-size: .9rem;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+/* Spinner */
+.spinner {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border: 3px solid rgba(255,255,255,.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin .6s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.loading-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+}
+.loading-box {
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 32px 40px;
+  text-align: center;
+}
+.loading-box .spinner {
+  width: 40px;
+  height: 40px;
+  border-color: rgba(37,99,235,.2);
+  border-top-color: var(--primary);
+  margin-bottom: 16px;
+}
+.loading-box p { font-weight: 600; color: var(--text); }
+
+/* Chart */
+.chart-container {
+  position: relative;
+  height: 280px;
+}
+
+/* Modal */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  padding: 20px;
+}
+.modal {
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 24px;
+  width: 100%;
+  max-width: 500px;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+.modal h3 { margin-bottom: 16px; }
+
+/* API key notice */
+.api-notice {
+  background: #fef3c7;
+  border: 1.5px solid #f59e0b;
+  border-radius: 8px;
+  padding: 12px 16px;
+  font-size: .85rem;
+  margin-bottom: 16px;
+  color: #92400e;
+}
+
+/* Records table */
+.record-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: .85rem;
+}
+.record-table th, .record-table td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+.record-table th {
+  font-weight: 600;
+  color: var(--text-light);
+  font-size: .8rem;
+}
+
+select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  font-size: .95rem;
+  font-family: inherit;
+  background: var(--card);
+  outline: none;
+  cursor: pointer;
+}
+select:focus { border-color: var(--primary); }
+
+.hidden { display: none !important; }
+
+@media (max-width: 480px) {
+  .page { padding: 16px; }
+  nav button { font-size: .78rem; padding: 10px 4px; }
+}
+</style>
+</head>
+<body>
+
+<header class="app-header">
+  <h1>答案練習アプリ</h1>
+</header>
+
+<nav id="nav">
+  <button data-page="questions" class="active">問題管理</button>
+  <button data-page="submit">答案提出</button>
+  <button data-page="records">記録</button>
+  <button data-page="settings">設定</button>
+</nav>
+
+<!-- ===== 問題管理 ===== -->
+<div id="page-questions" class="page active">
+  <div class="btn-group" style="margin-bottom:16px">
+    <button class="btn btn-primary btn-block" onclick="showAddQuestion()">+ 問題を追加</button>
+  </div>
+  <div id="question-list"></div>
+</div>
+
+<!-- ===== 答案提出 ===== -->
+<div id="page-submit" class="page">
+  <div class="card">
+    <label for="select-question">問題を選択</label>
+    <select id="select-question">
+      <option value="">-- 問題を選んでください --</option>
+    </select>
+  </div>
+
+  <div class="card">
+    <label>答案を撮影・アップロード</label>
+    <div class="camera-area" id="camera-area">
+      <video id="camera-video" autoplay playsinline></video>
+      <canvas id="camera-canvas"></canvas>
+      <img id="camera-preview" style="display:none" alt="プレビュー">
+    </div>
+    <div class="btn-group">
+      <button class="btn btn-outline btn-block" id="btn-start-camera" onclick="startCamera()">カメラ起動</button>
+      <button class="btn btn-primary btn-block hidden" id="btn-capture" onclick="capturePhoto()">撮影</button>
+    </div>
+    <div class="btn-group">
+      <button class="btn btn-outline btn-block" onclick="document.getElementById('file-input').click()">画像ファイル選択</button>
+      <input type="file" id="file-input" accept="image/*" style="display:none" onchange="handleFileSelect(event)">
+    </div>
+    <div class="btn-group" id="retake-group" style="display:none">
+      <button class="btn btn-outline btn-block" onclick="retakePhoto()">撮り直す</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <button class="btn btn-success btn-block" id="btn-submit" onclick="submitAnswer()" disabled>
+      AI採点を実行
+    </button>
+  </div>
+
+  <div id="result-area" class="hidden">
+    <div class="card result-box">
+      <div class="score-display">
+        <span class="score" id="result-score">--</span>
+        <span class="unit">%</span>
+      </div>
+      <div class="feedback-text" id="result-feedback"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 記録 ===== -->
+<div id="page-records" class="page">
+  <div class="card">
+    <label for="chart-question-select">問題を選択（グラフ表示）</label>
+    <select id="chart-question-select" onchange="renderChart()">
+      <option value="">-- すべて --</option>
+    </select>
+  </div>
+  <div class="card">
+    <div class="chart-container">
+      <canvas id="score-chart"></canvas>
+    </div>
+  </div>
+  <div class="card">
+    <h3 style="margin-bottom:12px">履歴</h3>
+    <div id="records-table-area"></div>
+  </div>
+</div>
+
+<!-- ===== 設定 ===== -->
+<div id="page-settings" class="page">
+  <div class="card">
+    <label for="api-key-input">Claude API キー</label>
+    <input type="text" id="api-key-input" placeholder="sk-ant-..." autocomplete="off">
+    <div class="btn-group">
+      <button class="btn btn-primary" onclick="saveApiKey()">保存</button>
+    </div>
+    <p style="margin-top:8px;font-size:.8rem;color:var(--text-light)">
+      APIキーはブラウザのlocalStorageにのみ保存されます。
+    </p>
+  </div>
+  <div class="card">
+    <h3 style="margin-bottom:12px">データ管理</h3>
+    <div class="btn-group">
+      <button class="btn btn-outline" onclick="exportData()">データエクスポート</button>
+      <button class="btn btn-danger" onclick="clearAllData()">全データ削除</button>
+    </div>
+  </div>
+</div>
+
+<!-- Loading overlay -->
+<div id="loading-overlay" class="loading-overlay hidden">
+  <div class="loading-box">
+    <div class="spinner"></div>
+    <p id="loading-text">処理中...</p>
+  </div>
+</div>
+
+<!-- Question Add/Edit Modal -->
+<div id="question-modal" class="modal-overlay hidden">
+  <div class="modal">
+    <h3 id="modal-title">問題を追加</h3>
+    <div style="margin-bottom:12px">
+      <label for="q-name">問題名</label>
+      <input type="text" id="q-name" placeholder="例：令和5年 民法 設問1">
+    </div>
+    <div style="margin-bottom:12px">
+      <label for="q-answer">模範答案</label>
+      <textarea id="q-answer" placeholder="模範答案のテキストを入力..." rows="8"></textarea>
+    </div>
+    <input type="hidden" id="q-edit-id">
+    <div class="btn-group">
+      <button class="btn btn-primary" onclick="saveQuestion()">保存</button>
+      <button class="btn btn-outline" onclick="closeModal()">キャンセル</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===== State =====
+const STORAGE_KEYS = {
+  questions: 'exam_questions',
+  records: 'exam_records',
+  apiKey: 'exam_api_key',
+};
+
+function loadData(key) {
+  try { return JSON.parse(localStorage.getItem(key)) || []; }
+  catch { return []; }
+}
+function saveData(key, data) { localStorage.setItem(key, JSON.stringify(data)); }
+
+let capturedImageBase64 = null;
+let cameraStream = null;
+let scoreChart = null;
+
+// ===== Navigation =====
+document.querySelectorAll('nav button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('page-' + btn.dataset.page).classList.add('active');
+
+    if (btn.dataset.page === 'submit') populateQuestionSelect();
+    if (btn.dataset.page === 'records') { populateChartSelect(); renderRecordsTable(); renderChart(); }
+    if (btn.dataset.page === 'settings') {
+      document.getElementById('api-key-input').value = localStorage.getItem(STORAGE_KEYS.apiKey) || '';
+    }
+  });
+});
+
+// ===== Questions =====
+function renderQuestions() {
+  const list = document.getElementById('question-list');
+  const questions = loadData(STORAGE_KEYS.questions);
+  if (questions.length === 0) {
+    list.innerHTML = '<div class="empty-state"><div class="icon">&#128218;</div><p>問題がまだ登録されていません。<br>「問題を追加」から始めましょう。</p></div>';
+    return;
+  }
+  list.innerHTML = questions.map(q => `
+    <div class="question-item" onclick="viewQuestion('${q.id}')">
+      <div>
+        <div class="name">${escapeHtml(q.name)}</div>
+        <div class="meta">模範答案: ${q.answer.length}文字</div>
+      </div>
+      <div class="actions" onclick="event.stopPropagation()">
+        <button title="編集" onclick="editQuestion('${q.id}')">&#9998;</button>
+        <button title="削除" onclick="deleteQuestion('${q.id}')">&#128465;</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function showAddQuestion() {
+  document.getElementById('modal-title').textContent = '問題を追加';
+  document.getElementById('q-name').value = '';
+  document.getElementById('q-answer').value = '';
+  document.getElementById('q-edit-id').value = '';
+  document.getElementById('question-modal').classList.remove('hidden');
+}
+
+function editQuestion(id) {
+  const q = loadData(STORAGE_KEYS.questions).find(x => x.id === id);
+  if (!q) return;
+  document.getElementById('modal-title').textContent = '問題を編集';
+  document.getElementById('q-name').value = q.name;
+  document.getElementById('q-answer').value = q.answer;
+  document.getElementById('q-edit-id').value = id;
+  document.getElementById('question-modal').classList.remove('hidden');
+}
+
+function viewQuestion(id) {
+  editQuestion(id);
+}
+
+function deleteQuestion(id) {
+  if (!confirm('この問題を削除しますか？')) return;
+  const questions = loadData(STORAGE_KEYS.questions).filter(q => q.id !== id);
+  saveData(STORAGE_KEYS.questions, questions);
+  renderQuestions();
+}
+
+function saveQuestion() {
+  const name = document.getElementById('q-name').value.trim();
+  const answer = document.getElementById('q-answer').value.trim();
+  if (!name || !answer) { alert('問題名と模範答案を入力してください。'); return; }
+
+  const questions = loadData(STORAGE_KEYS.questions);
+  const editId = document.getElementById('q-edit-id').value;
+
+  if (editId) {
+    const idx = questions.findIndex(q => q.id === editId);
+    if (idx >= 0) { questions[idx].name = name; questions[idx].answer = answer; }
+  } else {
+    questions.push({ id: generateId(), name, answer });
+  }
+  saveData(STORAGE_KEYS.questions, questions);
+  closeModal();
+  renderQuestions();
+}
+
+function closeModal() {
+  document.getElementById('question-modal').classList.add('hidden');
+}
+
+// ===== Camera & Image =====
+async function startCamera() {
+  try {
+    cameraStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }
+    });
+    const video = document.getElementById('camera-video');
+    video.srcObject = cameraStream;
+    video.style.display = 'block';
+    document.getElementById('camera-preview').style.display = 'none';
+    document.getElementById('btn-start-camera').classList.add('hidden');
+    document.getElementById('btn-capture').classList.remove('hidden');
+    document.getElementById('retake-group').style.display = 'none';
+    capturedImageBase64 = null;
+    updateSubmitButton();
+  } catch (e) {
+    alert('カメラを起動できませんでした: ' + e.message);
+  }
+}
+
+function capturePhoto() {
+  const video = document.getElementById('camera-video');
+  const canvas = document.getElementById('camera-canvas');
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  canvas.getContext('2d').drawImage(video, 0, 0);
+
+  capturedImageBase64 = canvas.toDataURL('image/jpeg', 0.85).split(',')[1];
+  const preview = document.getElementById('camera-preview');
+  preview.src = 'data:image/jpeg;base64,' + capturedImageBase64;
+  preview.style.display = 'block';
+  video.style.display = 'none';
+
+  stopCamera();
+  document.getElementById('btn-capture').classList.add('hidden');
+  document.getElementById('retake-group').style.display = '';
+  updateSubmitButton();
+}
+
+function handleFileSelect(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    capturedImageBase64 = e.target.result.split(',')[1];
+    const preview = document.getElementById('camera-preview');
+    preview.src = e.target.result;
+    preview.style.display = 'block';
+    document.getElementById('camera-video').style.display = 'none';
+    stopCamera();
+    document.getElementById('btn-start-camera').classList.add('hidden');
+    document.getElementById('btn-capture').classList.add('hidden');
+    document.getElementById('retake-group').style.display = '';
+    updateSubmitButton();
+  };
+  reader.readAsDataURL(file);
+}
+
+function retakePhoto() {
+  capturedImageBase64 = null;
+  document.getElementById('camera-preview').style.display = 'none';
+  document.getElementById('retake-group').style.display = 'none';
+  document.getElementById('btn-start-camera').classList.remove('hidden');
+  document.getElementById('btn-capture').classList.add('hidden');
+  document.getElementById('file-input').value = '';
+  document.getElementById('result-area').classList.add('hidden');
+  updateSubmitButton();
+}
+
+function stopCamera() {
+  if (cameraStream) {
+    cameraStream.getTracks().forEach(t => t.stop());
+    cameraStream = null;
+  }
+}
+
+function updateSubmitButton() {
+  const q = document.getElementById('select-question').value;
+  document.getElementById('btn-submit').disabled = !(q && capturedImageBase64);
+}
+
+function populateQuestionSelect() {
+  const sel = document.getElementById('select-question');
+  const questions = loadData(STORAGE_KEYS.questions);
+  sel.innerHTML = '<option value="">-- 問題を選んでください --</option>' +
+    questions.map(q => `<option value="${q.id}">${escapeHtml(q.name)}</option>`).join('');
+}
+
+document.getElementById('select-question').addEventListener('change', updateSubmitButton);
+
+// ===== AI Grading =====
+async function submitAnswer() {
+  const apiKey = localStorage.getItem(STORAGE_KEYS.apiKey);
+  if (!apiKey) { alert('設定画面でClaude APIキーを入力してください。'); return; }
+
+  const questionId = document.getElementById('select-question').value;
+  const questions = loadData(STORAGE_KEYS.questions);
+  const question = questions.find(q => q.id === questionId);
+  if (!question) { alert('問題を選択してください。'); return; }
+  if (!capturedImageBase64) { alert('答案の画像を撮影・選択してください。'); return; }
+
+  showLoading('OCR認識・AI採点中...');
+
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 4096,
+        messages: [{
+          role: 'user',
+          content: [
+            {
+              type: 'image',
+              source: { type: 'base64', media_type: 'image/jpeg', data: capturedImageBase64 }
+            },
+            {
+              type: 'text',
+              text: `あなたは法律の答案採点の専門家です。以下のタスクを行ってください。
+
+## タスク
+1. 画像に写っている手書きの答案構成をOCRで読み取ってください。
+2. 読み取った内容と以下の模範答案を比較してください。
+3. 正解率（0〜100の整数）とフィードバックを生成してください。
+
+## 模範答案
+${question.answer}
+
+## 出力フォーマット（厳密に従ってください）
+以下のJSON形式で出力してください。JSON以外は出力しないでください。
+{
+  "ocr_text": "（読み取ったテキスト）",
+  "score": （0〜100の整数）,
+  "feedback": "（フィードバック。模範答案と比較して良い点・改善点を具体的に述べてください。）"
+}`
+            }
+          ]
+        }]
+      })
+    });
+
+    if (!response.ok) {
+      const err = await response.text();
+      throw new Error(`API Error (${response.status}): ${err}`);
+    }
+
+    const data = await response.json();
+    const text = data.content[0].text;
+
+    // Extract JSON from response
+    let result;
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      result = JSON.parse(jsonMatch[0]);
+    } else {
+      throw new Error('AIからの応答をパースできませんでした。');
+    }
+
+    // Display result
+    const scoreEl = document.getElementById('result-score');
+    const feedbackEl = document.getElementById('result-feedback');
+    const score = Math.min(100, Math.max(0, parseInt(result.score) || 0));
+
+    scoreEl.textContent = score;
+    scoreEl.className = 'score ' + (score >= 70 ? 'score-high' : score >= 40 ? 'score-mid' : 'score-low');
+    feedbackEl.textContent = result.feedback || '';
+    document.getElementById('result-area').classList.remove('hidden');
+
+    // Save record
+    const records = loadData(STORAGE_KEYS.records);
+    records.push({
+      id: generateId(),
+      questionId: question.id,
+      questionName: question.name,
+      date: new Date().toISOString(),
+      score,
+      ocrText: result.ocr_text || '',
+      feedback: result.feedback || '',
+    });
+    saveData(STORAGE_KEYS.records, records);
+
+  } catch (e) {
+    alert('エラーが発生しました:\n' + e.message);
+    console.error(e);
+  } finally {
+    hideLoading();
+  }
+}
+
+// ===== Records & Chart =====
+function populateChartSelect() {
+  const sel = document.getElementById('chart-question-select');
+  const questions = loadData(STORAGE_KEYS.questions);
+  sel.innerHTML = '<option value="">-- すべて --</option>' +
+    questions.map(q => `<option value="${q.id}">${escapeHtml(q.name)}</option>`).join('');
+}
+
+function renderRecordsTable() {
+  const area = document.getElementById('records-table-area');
+  const records = loadData(STORAGE_KEYS.records).sort((a, b) => new Date(b.date) - new Date(a.date));
+  if (records.length === 0) {
+    area.innerHTML = '<div class="empty-state"><p>まだ記録がありません。</p></div>';
+    return;
+  }
+  area.innerHTML = `<table class="record-table">
+    <thead><tr><th>日付</th><th>問題</th><th>正解率</th></tr></thead>
+    <tbody>${records.map(r => `<tr>
+      <td>${formatDate(r.date)}</td>
+      <td>${escapeHtml(r.questionName)}</td>
+      <td><strong class="${r.score >= 70 ? 'score-high' : r.score >= 40 ? 'score-mid' : 'score-low'}">${r.score}%</strong></td>
+    </tr>`).join('')}</tbody>
+  </table>`;
+}
+
+function renderChart() {
+  const selectedId = document.getElementById('chart-question-select').value;
+  let records = loadData(STORAGE_KEYS.records).sort((a, b) => new Date(a.date) - new Date(b.date));
+
+  if (selectedId) {
+    records = records.filter(r => r.questionId === selectedId);
+  }
+
+  const ctx = document.getElementById('score-chart').getContext('2d');
+
+  if (scoreChart) scoreChart.destroy();
+
+  if (records.length === 0) {
+    scoreChart = new Chart(ctx, {
+      type: 'line',
+      data: { labels: [], datasets: [] },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false }, title: { display: true, text: 'データがありません' } }
+      }
+    });
+    return;
+  }
+
+  if (selectedId) {
+    // Single question: simple line chart
+    scoreChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: records.map((r, i) => `${i + 1}回目 (${formatDate(r.date)})`),
+        datasets: [{
+          label: '正解率',
+          data: records.map(r => r.score),
+          borderColor: '#2563eb',
+          backgroundColor: 'rgba(37,99,235,.1)',
+          fill: true,
+          tension: .3,
+          pointRadius: 5,
+          pointBackgroundColor: '#2563eb',
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: { y: { min: 0, max: 100, ticks: { callback: v => v + '%' } } },
+        plugins: { legend: { display: false }, title: { display: true, text: '成長推移' } }
+      }
+    });
+  } else {
+    // All questions: group by question
+    const grouped = {};
+    records.forEach(r => {
+      if (!grouped[r.questionName]) grouped[r.questionName] = [];
+      grouped[r.questionName].push(r);
+    });
+
+    const colors = ['#2563eb', '#dc2626', '#16a34a', '#ea580c', '#7c3aed', '#0891b2'];
+    const datasets = Object.entries(grouped).map(([name, recs], i) => ({
+      label: name,
+      data: recs.map((r, j) => ({ x: j + 1, y: r.score })),
+      borderColor: colors[i % colors.length],
+      tension: .3,
+      pointRadius: 4,
+    }));
+
+    scoreChart = new Chart(ctx, {
+      type: 'line',
+      data: { datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: { type: 'linear', title: { display: true, text: '回数' }, ticks: { stepSize: 1 } },
+          y: { min: 0, max: 100, ticks: { callback: v => v + '%' } }
+        },
+        plugins: { title: { display: true, text: '全問題の成長推移' } }
+      }
+    });
+  }
+}
+
+// ===== Settings =====
+function saveApiKey() {
+  const key = document.getElementById('api-key-input').value.trim();
+  if (!key) { alert('APIキーを入力してください。'); return; }
+  localStorage.setItem(STORAGE_KEYS.apiKey, key);
+  alert('APIキーを保存しました。');
+}
+
+function exportData() {
+  const data = {
+    questions: loadData(STORAGE_KEYS.questions),
+    records: loadData(STORAGE_KEYS.records),
+    exportDate: new Date().toISOString(),
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'exam-practice-backup-' + formatDate(new Date().toISOString()) + '.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function clearAllData() {
+  if (!confirm('全データを削除しますか？この操作は元に戻せません。')) return;
+  if (!confirm('本当に削除しますか？')) return;
+  localStorage.removeItem(STORAGE_KEYS.questions);
+  localStorage.removeItem(STORAGE_KEYS.records);
+  renderQuestions();
+  alert('全データを削除しました。');
+}
+
+// ===== Utilities =====
+function generateId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+function escapeHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+function formatDate(iso) { const d = new Date(iso); return `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}`; }
+function showLoading(msg) { document.getElementById('loading-text').textContent = msg || '処理中...'; document.getElementById('loading-overlay').classList.remove('hidden'); }
+function hideLoading() { document.getElementById('loading-overlay').classList.add('hidden'); }
+
+// ===== Init =====
+renderQuestions();
+
+// Check API key on load
+if (!localStorage.getItem(STORAGE_KEYS.apiKey)) {
+  const notice = document.createElement('div');
+  notice.className = 'api-notice';
+  notice.innerHTML = 'Claude APIキーが未設定です。<strong>設定</strong>タブからAPIキーを入力してください。';
+  notice.style.cssText = 'position:fixed;bottom:20px;left:20px;right:20px;max-width:600px;margin:0 auto;z-index:150;cursor:pointer;';
+  notice.onclick = () => { notice.remove(); document.querySelector('[data-page="settings"]').click(); };
+  document.body.appendChild(notice);
+  setTimeout(() => notice.remove(), 8000);
+}
+</script>
+</body>
+</html>
